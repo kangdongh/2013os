@@ -71,12 +71,25 @@ static void schedule (void);
 void schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+/*modified proj3-2*/
+// prototype
+bool vruntime_less_func(const struct list_elem *a, const struct list_elem *b, void *aux);
+//implementation
+
+bool vruntime_less_func(const struct list_elem *a, const struct list_elem *b, void *aux)
+{
+		struct thread* t1 = list_entry(a, struct thread, elem);
+		struct thread* t2 = list_entry(b, struct thread, elem);
+		return ((t1->runtime)*(t2->priority))<=((t1->priority)*(t2->runtime));
+}
+
 /* modified */
 /*prototype*/
 bool wait_less_func(const struct list_elem *a, const struct list_elem *b, void *aux);
 void thread_sleep(int64_t ticks);
 void thread_awake(void);
 /*implementation*/
+
 bool wait_less_func(const struct list_elem *a, const struct list_elem *b, void *aux)
 {
 		return (list_entry(a, struct wait_node, elem)->awake_ticks <= list_entry(b, struct wait_node, elem)->awake_ticks);
@@ -173,7 +186,7 @@ thread_tick (void)
 #endif
   else
     kernel_ticks++;
-
+  t->runtime=t->runtime+1; // modified proj3-2
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
@@ -510,6 +523,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->runtime = 0;
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }
