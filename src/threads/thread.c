@@ -80,7 +80,12 @@ bool vruntime_less_func(const struct list_elem *a, const struct list_elem *b, vo
 {
 		struct thread* t1 = list_entry(a, struct thread, elem);
 		struct thread* t2 = list_entry(b, struct thread, elem);
-		return ((t1->runtime)*(t2->priority))<=((t1->priority)*(t2->runtime));
+		if(((t1->runtime)*(t2->priority))<((t1->priority)*(t2->runtime))) return true;
+		else{
+		if(((t1->runtime)*(t2->priority))>((t1->priority)*(t2->runtime))) return false;
+		if((t1->priority)>=(t2->priority)) return true;
+		return false;
+		}
 }
 
 /* modified */
@@ -188,6 +193,11 @@ thread_tick (void)
     kernel_ticks++;
   t->runtime=t->runtime+1; // modified proj3-2
   /* Enforce preemption. */
+  if (!list_empty(&ready_list))
+  {
+	if (!vruntime_less_func(t,&((&ready_list)->head),NULL))
+			intr_yield_on_return();
+  }
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
 
@@ -300,7 +310,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_insert_ordered (&ready_list, &t->elem, vruntime_less_func, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -370,8 +380,8 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+  if (cur != idle_thread)
+	list_insert_ordered (&ready_list, &cur->elem, vruntime_less_func, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -523,7 +533,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
-  t->runtime = 0;
+  t->runtime = 1;
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }
