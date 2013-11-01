@@ -71,12 +71,30 @@ static void schedule (void);
 void schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+/*modified proj3-2*/
+// prototype
+bool vruntime_less_func(const struct list_elem *a, const struct list_elem *b, void *aux);
+//implementation
+
+bool vruntime_less_func(const struct list_elem *a, const struct list_elem *b, void *aux)
+{
+		struct thread* t1 = list_entry(a, struct thread, elem);
+		struct thread* t2 = list_entry(b, struct thread, elem);
+		if(((t1->runtime)*(t2->priority))<((t1->priority)*(t2->runtime))) return true;
+		else{
+		if(((t1->runtime)*(t2->priority))>((t1->priority)*(t2->runtime))) return false;
+		if((t1->priority)>(t2->priority)) return true;
+		return false;
+		}
+}
+
 /* modified */
 /*prototype*/
 bool wait_less_func(const struct list_elem *a, const struct list_elem *b, void *aux);
 void thread_sleep(int64_t ticks);
 void thread_awake(void);
 /*implementation*/
+
 bool wait_less_func(const struct list_elem *a, const struct list_elem *b, void *aux)
 {
 		return (list_entry(a, struct wait_node, elem)->awake_ticks <= list_entry(b, struct wait_node, elem)->awake_ticks);
@@ -89,8 +107,9 @@ void thread_sleep(int64_t ticks)
 		struct wait_node* curr_node = (struct wait_node*)malloc(sizeof(struct wait_node));
 		curr_node->awake_ticks = ticks+timer_ticks();
 		curr_node->sleep_thread = curr_thread;
-
+		//modified
 		list_insert_ordered(&wait_list, &(curr_node->elem), wait_less_func, NULL);
+		//end
 		thread_block();
 
 		intr_set_level(old_level);
@@ -173,8 +192,15 @@ thread_tick (void)
 #endif
   else
     kernel_ticks++;
-
+//  t->runtime=t->runtime+1; // modified proj3-2
   /* Enforce preemption. */
+/*  if (!list_empty(&ready_list))
+  {
+	list_sort(&ready_list,vruntime_less_func,NULL);
+	if (!vruntime_less_func(t,&((&ready_list)->head),NULL))
+			intr_yield_on_return();
+  }
+  */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
 
@@ -250,7 +276,9 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-
+  /* modified */
+  list_sort(&ready_list,vruntime_less_func,NULL);
+  // thread_yield();
   return tid;
 }
 
@@ -287,7 +315,11 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  //modified
+  //list_push_back(&ready_list,&(t->elem));
+  list_sort(&ready_list,vruntime_less_func,NULL);
+  list_insert_ordered (&ready_list, &t->elem, vruntime_less_func, NULL);
+  //end
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -357,8 +389,15 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+  //modified
+  cur->runtime++;
+  if (cur != idle_thread)
+  {
+    //list_push_back(&ready_list,&(cur->elem));
+    list_sort(&ready_list,vruntime_less_func,NULL);
+	list_insert_ordered (&ready_list, &cur->elem, vruntime_less_func, NULL);
+  }
+  //end
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -510,6 +549,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->runtime = 1;
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }
@@ -538,7 +578,10 @@ next_thread_to_run (void)
   if (list_empty (&ready_list))
     return idle_thread;
   else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  { //modified
+   // list_sort(&ready_list,vruntime_less_func,NULL);
+	return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  }
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -585,6 +628,7 @@ schedule_tail (struct thread *prev)
       ASSERT (prev != cur);
       palloc_free_page (prev);
     }
+  list_sort(&ready_list,vruntime_less_func,NULL);
 }
 
 /* Schedules a new process.  At entry, interrupts must be off and

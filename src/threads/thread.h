@@ -80,6 +80,17 @@ typedef int tid_t;
    only because they are mutually exclusive: only a thread in the
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
+
+/*modified proj3-2*/
+
+/* not necessary!
+struct fraction
+{
+		unsigned a; // mol
+		unsigned b; // denom
+		//represent a/b
+}
+*/
 struct thread
   {
     /* Owned by thread.c. */
@@ -92,7 +103,7 @@ struct thread
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-
+	int runtime; // modified
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */

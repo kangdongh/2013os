@@ -23,7 +23,7 @@ struct simple_thread_data
     int **op;                   /* Output buffer position. */
   };
 
-#define THREAD_CNT 16
+#define THREAD_CNT 3
 #define ITER_CNT 16
 
 static thread_func simple_thread_func;
@@ -50,37 +50,34 @@ test_priority_fifo (void)
   ASSERT (output != NULL);
   lock_init (&lock);
 
-  thread_set_priority (PRI_DEFAULT + 2);
-  for (i = 0; i < THREAD_CNT; i++) 
+  thread_set_priority (1000);
+  for (i = 1; i < THREAD_CNT+1; i++) 
     {
       char name[16];
-      struct simple_thread_data *d = data + i;
-      snprintf (name, sizeof name, "%d", i);
+      struct simple_thread_data *d = data + (i-1);
+      snprintf (name, sizeof name, "%d ", i);
       d->id = i;
       d->iterations = 0;
       d->lock = &lock;
       d->op = &op;
-      thread_create (name, PRI_DEFAULT + 1, simple_thread_func, d);
+      thread_create (name, i*10, simple_thread_func, d);
     }
-
-  thread_set_priority (PRI_DEFAULT);
+  thread_set_priority (1);
+  thread_yield();
   /* All the other threads now run to termination here. */
   ASSERT (lock.holder == NULL);
-
+	/*
   cnt = 0;
   for (; output < op; output++) 
     {
       struct simple_thread_data *d;
 
-      ASSERT (*output >= 0 && *output < THREAD_CNT);
+      ASSERT (*output > 0 && *output <= THREAD_CNT);
       d = data + *output;
-      if (cnt % THREAD_CNT == 0)
-        printf ("(priority-fifo) iteration:");
-      printf (" %d", d->id);
-      if (++cnt % THREAD_CNT == 0)
-        printf ("\n");
-      d->iterations++;
+      printf ("%d", d->id);
     }
+	*/
+	
 }
 
 static void 
@@ -92,7 +89,8 @@ simple_thread_func (void *data_)
   for (i = 0; i < ITER_CNT; i++) 
     {
       lock_acquire (data->lock);
-      *(*data->op)++ = data->id;
+      //*(*data->op)++ = data->id;
+	  printf("%d",data->id);
       lock_release (data->lock);
       thread_yield ();
     }
