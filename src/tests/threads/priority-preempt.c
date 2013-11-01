@@ -37,5 +37,7 @@ simple_thread_func (void *aux UNUSED)
       msg ("Thread %s iteration %d", thread_name (), i);
       thread_yield ();
     }
+
   msg ("Thread %s done!", thread_name ());
+  thread_print_stats();
 }

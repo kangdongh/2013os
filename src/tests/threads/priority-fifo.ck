@@ -31,7 +31,8 @@ my (@output) = read_text_file ("$test.output");
 
 common_checks ("run", @output);
 
-my ($thread_cnt) = 16;
+my ($thread_cnt) = 3;
+
 my ($iter_cnt) = 16;
 my (@order);
 my (@t) = (-1) x $thread_cnt;
