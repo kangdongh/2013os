@@ -14,12 +14,14 @@
 #include "threads/malloc.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include "lib/random.h"
 
+#define THREAD_CNT 3000
+#define ITER_CNT 20
 
-#define THREAD_CNT 400
-#define ITER_CNT 100
-
-extern long long int sch_time;
+extern uint64_t sch_time;
+int sch_entered;
+int context_switched;
 
 static thread_func simple_thread_func;
 
@@ -27,7 +29,7 @@ void
 test_priority_fifo (void) 
 {
   int i, cnt;
-
+  random_init(0); // random gen
   /* This test does not work with the MLFQS. */
   ASSERT (!thread_mlfqs);
 
@@ -43,11 +45,11 @@ test_priority_fifo (void)
     {
       char name[16];
       snprintf (name, sizeof name, "%d ", i);
-      thread_create (name, 32+(i*5)/(THREAD_CNT), simple_thread_func, NULL);
+      thread_create (name, (random_ulong()%(PRI_MAX))+1, simple_thread_func, NULL);
     }
   thread_set_priority (1);
   thread_yield();
-  printf("sch_time:%lld\n",sch_time);
+  printf("context_switched:%d\nsched_enterd:%d\nsch_time:%llu\n",context_switched,sch_entered,sch_time);
   /* All the other threads now run to termination here. */
 	/*
   cnt = 0;

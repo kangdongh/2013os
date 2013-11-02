@@ -71,8 +71,9 @@ static void schedule (void);
 void schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-long long int sch_time;
-
+uint64_t sch_time;
+int sch_entered;
+int context_switched;
 /*modified proj3-2*/
 // prototype
 bool vruntime_less_func(const struct list_elem *a, const struct list_elem *b, void *aux);
@@ -90,11 +91,11 @@ bool vruntime_less_func(const struct list_elem *a, const struct list_elem *b, vo
 		}
 }
 
-static inline uint32_t get_cycles(void)
+static inline uint64_t get_cycles(void)
 {
 	uint32_t low,high;
 	__asm__ __volatile__("rdtsc":"=a"(low),"=d"(high));
-	return low;
+	return ((uint64_t)high<<32)||low;
 }
 
 /* modified */
@@ -162,6 +163,8 @@ thread_init (void)
   list_init (&all_list);
   list_init (&wait_list); //modified
   sch_time=0;
+  sch_entered=0;
+  context_switched=0;
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -638,7 +641,7 @@ schedule_tail (struct thread *prev)
       ASSERT (prev != cur);
       palloc_free_page (prev);
     }
-  list_sort(&ready_list,vruntime_less_func,NULL);
+  //list_sort(&ready_list,vruntime_less_func,NULL);
 }
 
 /* Schedules a new process.  At entry, interrupts must be off and
@@ -651,7 +654,7 @@ schedule_tail (struct thread *prev)
 static void
 schedule (void) 
 {
-  uint32_t p1 = get_cycles();
+  uint64_t p1 = get_cycles();
   struct thread *cur = running_thread ();
   struct thread *next = next_thread_to_run ();
   struct thread *prev = NULL;
@@ -660,11 +663,15 @@ schedule (void)
   ASSERT (cur->status != THREAD_RUNNING);
   ASSERT (is_thread (next));
 
-  if (cur != next)
+  if (cur != next){
     prev = switch_threads (cur, next);
+	list_sort(&ready_list,vruntime_less_func,NULL);
+	context_switched++;
+  }
   schedule_tail (prev);
   p1=get_cycles()-p1;
   sch_time+=p1;
+  sch_entered++;
 }
 
 /* Returns a tid to use for a new thread. */
