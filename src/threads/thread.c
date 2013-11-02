@@ -94,8 +94,13 @@ bool vruntime_less_func(const struct list_elem *a, const struct list_elem *b, vo
 static inline uint64_t get_cycles(void)
 {
 	uint32_t low,high;
+	__asm__ __volatile__(
+					" xorl %%eax,%%eax \n"
+					" cpuid"
+					::: "%rax", "%rbx", "%rcx", "%rdx");
 	__asm__ __volatile__("rdtsc":"=a"(low),"=d"(high));
-	return ((uint64_t)high<<32)||low;
+	return (uint64_t)high << 32 | low;
+	//return low;
 }
 
 /* modified */
