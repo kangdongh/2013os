@@ -131,7 +131,7 @@ void thread_sleep(int64_t);
 
 /*end*/
 extern bool thread_mlfqs;
-
+extern long long int sch_time;
 void thread_init (void);
 void thread_start (void);
 

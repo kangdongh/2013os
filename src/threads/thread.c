@@ -71,6 +71,8 @@ static void schedule (void);
 void schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+long long int sch_time;
+
 /*modified proj3-2*/
 // prototype
 bool vruntime_less_func(const struct list_elem *a, const struct list_elem *b, void *aux);
@@ -86,6 +88,13 @@ bool vruntime_less_func(const struct list_elem *a, const struct list_elem *b, vo
 		if((t1->priority)>(t2->priority)) return true;
 		return false;
 		}
+}
+
+static inline uint32_t get_cycles(void)
+{
+	uint32_t low,high;
+	__asm__ __volatile__("rdtsc":"=a"(low),"=d"(high));
+	return low;
 }
 
 /* modified */
@@ -152,6 +161,7 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&all_list);
   list_init (&wait_list); //modified
+  sch_time=0;
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -192,15 +202,15 @@ thread_tick (void)
 #endif
   else
     kernel_ticks++;
-//  t->runtime=t->runtime+1; // modified proj3-2
+    t->runtime=t->runtime+1; // modified proj3-2
   /* Enforce preemption. */
-/*  if (!list_empty(&ready_list))
+  if (!list_empty(&ready_list))
   {
-	list_sort(&ready_list,vruntime_less_func,NULL);
+	//list_sort(&ready_list,vruntime_less_func,NULL);
 	if (!vruntime_less_func(t,&((&ready_list)->head),NULL))
-			intr_yield_on_return();
+			intr_yield_on_return(); // thread_yield:rescheduling
   }
-  */
+  
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
 
@@ -277,8 +287,8 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
   /* modified */
-  list_sort(&ready_list,vruntime_less_func,NULL);
-  // thread_yield();
+  //list_sort(&ready_list,vruntime_less_func,NULL);
+  // thread_yield(); // for preemption
   return tid;
 }
 
@@ -317,7 +327,7 @@ thread_unblock (struct thread *t)
   ASSERT (t->status == THREAD_BLOCKED);
   //modified
   //list_push_back(&ready_list,&(t->elem));
-  list_sort(&ready_list,vruntime_less_func,NULL);
+  //list_sort(&ready_list,vruntime_less_func,NULL);
   list_insert_ordered (&ready_list, &t->elem, vruntime_less_func, NULL);
   //end
   t->status = THREAD_READY;
@@ -390,11 +400,11 @@ thread_yield (void)
 
   old_level = intr_disable ();
   //modified
-  cur->runtime++;
+  //cur->runtime++; // for test
   if (cur != idle_thread)
   {
     //list_push_back(&ready_list,&(cur->elem));
-    list_sort(&ready_list,vruntime_less_func,NULL);
+    //list_sort(&ready_list,vruntime_less_func,NULL);
 	list_insert_ordered (&ready_list, &cur->elem, vruntime_less_func, NULL);
   }
   //end
@@ -641,6 +651,7 @@ schedule_tail (struct thread *prev)
 static void
 schedule (void) 
 {
+  uint32_t p1 = get_cycles();
   struct thread *cur = running_thread ();
   struct thread *next = next_thread_to_run ();
   struct thread *prev = NULL;
@@ -651,7 +662,9 @@ schedule (void)
 
   if (cur != next)
     prev = switch_threads (cur, next);
-  schedule_tail (prev); 
+  schedule_tail (prev);
+  p1=get_cycles()-p1;
+  sch_time+=p1;
 }
 
 /* Returns a tid to use for a new thread. */
