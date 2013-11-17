@@ -23,7 +23,7 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
-static struct list wait_list; //modified
+
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
@@ -71,46 +71,6 @@ static void schedule (void);
 void schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-/* modified */
-/*prototype*/
-bool wait_less_func(const struct list_elem *a, const struct list_elem *b, void *aux);
-void thread_sleep(int64_t ticks);
-void thread_awake(void);
-/*implementation*/
-bool wait_less_func(const struct list_elem *a, const struct list_elem *b, void *aux)
-{
-		return (list_entry(a, struct wait_node, elem)->awake_ticks <= list_entry(b, struct wait_node, elem)->awake_ticks);
-}
-
-void thread_sleep(int64_t ticks)
-{
-		enum intr_level old_level = intr_disable();
-		struct thread* curr_thread = thread_current();
-		struct wait_node* curr_node = (struct wait_node*)malloc(sizeof(struct wait_node));
-		curr_node->awake_ticks = ticks+timer_ticks();
-		curr_node->sleep_thread = curr_thread;
-
-		list_insert_ordered(&wait_list, &(curr_node->elem), wait_less_func, NULL);
-		thread_block();
-
-		intr_set_level(old_level);
-}
-
-void thread_awake(void)
-{
-		int64_t curr_ticks = timer_ticks();
-		enum intr_level old_level = intr_disable();
-
-		while(!list_empty(&wait_list))
-		{
-				struct wait_node* first_elem = list_entry(list_front(&wait_list), struct wait_node, elem);
-				if(first_elem->awake_ticks>curr_ticks) break;
-				thread_unblock(first_elem->sleep_thread);
-				list_pop_front(&wait_list);
-		}
-		intr_set_level(old_level);
-}
-/* end */
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can not work in
    general and it is possible in this case only because loader.S
@@ -132,7 +92,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
-  list_init (&wait_list); //modified
+
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -177,8 +137,6 @@ thread_tick (void)
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
-
-  thread_awake(); // modified
 }
 
 /* Prints thread statistics. */

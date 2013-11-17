@@ -105,20 +105,6 @@ struct thread
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
-
-/*modified*/
-
-struct wait_node // wait_queue node
-{
-		int64_t awake_ticks;
-		struct thread * sleep_thread;
-		struct list_elem elem;
-};
-
-void thread_awake(void);
-void thread_sleep(int64_t);
-
-/*end*/
 extern bool thread_mlfqs;
 
 void thread_init (void);

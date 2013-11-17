@@ -33,7 +33,6 @@ static void real_time_delay (int64_t num, int32_t denom);
 /* Sets up the 8254 Programmable Interval Timer (PIT) to
    interrupt PIT_FREQ times per second, and registers the
    corresponding interrupt. */
-
 void
 timer_init (void) 
 {
@@ -102,9 +101,8 @@ timer_sleep (int64_t ticks)
   int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
-/*  while (timer_elapsed (start) < ticks) 
-    thread_yield (); // busy waiting */
-  thread_sleep(ticks); // modified
+  while (timer_elapsed (start) < ticks) 
+    thread_yield ();
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
