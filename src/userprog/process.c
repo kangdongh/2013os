@@ -18,6 +18,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#include "threads/malloc.h"
+
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -39,8 +41,17 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  char *filename = malloc( strlen( file_name ) + 1 );
+  strlcpy( filename, file_name, strlen( file_name ) + 1 );
+  char *save_ptr;
+  filename = strtok_r( filename, " ", &save_ptr );
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (filename, PRI_DEFAULT, start_process, fn_copy);
+
+  struct thread *thread = get_thread_by_tid( tid );
+  sema_down( &thread->wait );
+
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -57,6 +68,7 @@ start_process (void *file_name_)
 
   char **argv;
   int argc = 0;
+  struct thread *thread;
 
   {
     char *token, *save_ptr;
@@ -69,18 +81,23 @@ start_process (void *file_name_)
     }
   }
 
+  thread = thread_current();
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+
   success = load (file_name, &if_.eip, &if_.esp);
 
   if (success) {
+    thread->fp = filesys_open( file_name );
+
+    file_deny_write( thread->fp );
     // ARGUMENT PASSING START 
     int i, len = 0;
-    int start_esp = if_.esp;
+    int start_esp = (int) if_.esp;
     // len is for alignment.
     for( i = argc - 1; i >= 0; i -- ) {
       int now_len = strlen( argv[ i ] );
@@ -101,21 +118,28 @@ start_process (void *file_name_)
       *(int *)(if_.esp) = start_esp;
     }
     if_.esp -= 4;
-    *(int *)(if_.esp) = (if_.esp + 4);
+    *(int *)(if_.esp) = (int) (if_.esp + 4);
     if_.esp -= 4;
     *(int *)(if_.esp) = argc;
     if_.esp -= 4;
     *(int *)(if_.esp) = 0;
 
     // ARGUMENT PASSING END 
+
+    sema_up( &thread->wait );
+  } else {
+    sema_up( &thread->wait );
   }
   palloc_free_page (argv);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
+  if (!success)  {
+    thread->ret_status = -1;
     thread_exit ();
+  }
 
+  file_allow_write( thread->fp );
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -136,9 +160,20 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-  return -1;
+  struct thread *thread;
+  thread = get_thread_by_tid( child_tid );
+  if( thread == NULL || thread->status == THREAD_DYING ) {
+    return -1;
+  }
+  sema_down( &thread->wait );
+  int ret = thread->ret_status;
+  while( thread->status == THREAD_BLOCKED ) {
+    thread_unblock( thread );
+  }
+  ret = thread->ret_status;
+  return ret;
 }
 
 /* Free the current process's resources. */
@@ -147,6 +182,11 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  while( !list_empty( &cur->wait.waiters ) ) {
+    sema_up( &cur->wait );
+  }
+  printf( "%s: exit(%d)\n", cur->name, cur->ret_status );
 
   /* Destroys the current process's page directory and switch back
      to the kernel-only page directory. */

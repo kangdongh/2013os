@@ -98,6 +98,9 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+  sema_init( &initial_thread->wait, 0 );
+  initial_thread->ret_status = 0;
+  initial_thread->fp = NULL;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -205,6 +208,10 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
 
   intr_set_level (old_level);
+
+  sema_init( &t->wait, 0 );
+  t->ret_status = 0;
+  t->fp = NULL;
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -585,3 +592,18 @@ allocate_tid (void)
 /* Offset of 'stack' member within 'thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+
+struct thread *get_thread_by_tid( tid_t tid ) {
+  struct list_elem *e;
+  struct thread *t;
+
+  for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)) {
+    t = list_entry (e, struct thread, allelem);
+    if( t->tid == tid ) {
+      return t;
+    }
+  }
+
+  return NULL;
+}
