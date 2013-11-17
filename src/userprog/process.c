@@ -18,6 +18,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
@@ -54,12 +55,61 @@ start_process (void *file_name_)
   struct intr_frame if_;
   bool success;
 
+  char **argv;
+  int argc = 0;
+
+  {
+    char *token, *save_ptr;
+    argv = palloc_get_page( 0 );
+    
+    for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; 
+         token = strtok_r (NULL, " ", &save_ptr)) {
+      argc ++;
+      argv[ argc - 1 ] = token;
+    }
+  }
+
+
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
+
+  if (success) {
+    // ARGUMENT PASSING START 
+    int i, len = 0;
+    int start_esp = if_.esp;
+    // len is for alignment.
+    for( i = argc - 1; i >= 0; i -- ) {
+      int now_len = strlen( argv[ i ] );
+      if_.esp -= now_len + 1;
+      memcpy( if_.esp, argv[ i ], now_len + 1 );
+      len += now_len + 1;
+    }
+    if_.esp -= 4 - ( len % 4 ); // alignment.
+    if_.esp -= 4; // argv[ argc ]
+    *(int *)(if_.esp) = 0; // argv[ argc ] = 0;
+
+    for( i = argc - 1; i >= 0; i -- ) {
+      int now_len = strlen( argv[ i ] );
+      start_esp -= now_len;
+      start_esp --;
+
+      if_.esp -= 4;
+      *(int *)(if_.esp) = start_esp;
+    }
+    if_.esp -= 4;
+    *(int *)(if_.esp) = (if_.esp + 4);
+    if_.esp -= 4;
+    *(int *)(if_.esp) = argc;
+    if_.esp -= 4;
+    *(int *)(if_.esp) = 0;
+
+    // ARGUMENT PASSING END 
+  }
+  palloc_free_page (argv);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
