@@ -6,6 +6,8 @@
 #include "threads/pte.h"
 #include "threads/palloc.h"
 
+#include "userprog/syscall.h"
+
 static uint32_t *active_pd (void);
 static void invalidate_pagedir (uint32_t *);
 
@@ -58,7 +60,8 @@ lookup_page (uint32_t *pd, const void *vaddr, bool create)
 {
   uint32_t *pt, *pde;
 
-  ASSERT (pd != NULL);
+  ASSERT( pd != NULL );
+
 
   /* Shouldn't create new kernel virtual mappings. */
   ASSERT (!create || is_user_vaddr (vaddr));

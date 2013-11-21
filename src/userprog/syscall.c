@@ -1,5 +1,6 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
+#include <string.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
@@ -31,12 +32,12 @@ int make_fd() {
   return ret;
 }
 
-struct file_node *find_file_node_by_fd( int fd ){
+struct file_node *find_file_node_by_fd( int fd, struct thread *thread ){
   struct list_elem *e;
 
   for( e = list_begin( &file_list ); e != list_end( &file_list ); e = list_next( e ) ) {
     struct file_node *fnode = list_entry( e, struct file_node, elem );
-    if( fnode->fd == fd ) {
+    if( fnode->fd == fd && fnode->thread == thread ) {
       return fnode;
     }
   }
@@ -44,17 +45,17 @@ struct file_node *find_file_node_by_fd( int fd ){
   return NULL;
 }
 
-struct file *find_file_by_fd( int fd ){
+struct file *find_file_by_fd( int fd, struct thread *thread ){
   struct file_node *e;
 
-  e = find_file_node_by_fd( fd );
+  e = find_file_node_by_fd( fd, thread );
   if( e == NULL ) {
     return NULL;
   }
   return e->fp;
 }
 
-void close_file_by_thread( struct thread * thread ) {
+void close_file_by_thread( struct thread *thread ) {
   struct list_elem *e;
   int before_fd = -1;
 
@@ -88,10 +89,15 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f) 
 {
-  if( !is_user_vaddr( (void *)(f->esp) ) ) {
+  if( (int *)f->esp == NULL || !is_user_vaddr( (int *)(f->esp) ) ) {
     sys_exit( -1 );
   }
+//  printf( "------ SYSCALL %x\n", f->esp );
+//  printf( "------ SYSCALL %d\n", *(int *)(f->esp));
   int syscall_number = *(int *)(f->esp);
+  if( syscall_number < SYS_HALT || syscall_number > SYS_INUMBER ) {
+    sys_exit( -1 );
+  }
   int arg1, arg2, arg3;
 
   arg1 = arg2 = arg3 = 0;
@@ -108,7 +114,7 @@ syscall_handler (struct intr_frame *f)
       syscall_number == SYS_SEEK ||
       syscall_number == SYS_TELL ||
       syscall_number == SYS_CLOSE ) {
-    if( !is_user_vaddr( (void *)(f->esp + 4) ) ) {
+    if( (void *)(f->esp + 4) == NULL || !is_user_vaddr( (void *)(f->esp + 4) ) ) {
       sys_exit( -1 );
     }
     arg1 = *(int *)(f->esp+4);
@@ -117,7 +123,7 @@ syscall_handler (struct intr_frame *f)
       syscall_number == SYS_READ || 
       syscall_number == SYS_WRITE || 
       syscall_number == SYS_SEEK ) {
-    if( !is_user_vaddr( (void *)(f->esp + 8) ) ) {
+    if( (void *)(f->esp + 8) == NULL || !is_user_vaddr( (void *)(f->esp + 8) ) ) {
       sys_exit( -1 );
     }
     arg2 = *(int *)(f->esp+8);
@@ -184,10 +190,9 @@ void sys_halt() {
 int sys_exit( int status ) {
   struct thread *thread = thread_current();
 
-  close_file_by_thread( thread );
-
   thread->ret_status = status;
   thread_exit();
+  close_file_by_thread( thread );
 
   return -1;
 }
@@ -196,6 +201,22 @@ pid_t sys_exec( const char *file ) {
   if( file == NULL || ! is_user_vaddr( file ) ) {
     return -1;
   }
+  char *temp_file = malloc( strlen( file ) + 1 );
+  memcpy( temp_file, file, strlen( file ) + 1 );
+  int i;
+  for( i = strlen( file ) - 1; i >= 0; i -- ) {
+    if( temp_file[ i ] == ' ') { 
+      temp_file[ i ] = 0;
+    }
+  }
+
+  struct file *fp = filesys_open( temp_file );
+  free( temp_file );
+  if( fp == NULL ) {
+    return -1;
+  } 
+  file_close( fp );
+
   pid_t pid;
 
   pid = process_execute( file );
@@ -204,6 +225,7 @@ pid_t sys_exec( const char *file ) {
 }
 
 int sys_wait( pid_t pid ) {
+//  printf( "\n WAIT CALLED - %d\n", (int) pid );
   return process_wait( pid );
 }
 
@@ -255,7 +277,7 @@ int sys_open( const char *file ) {
 }
 
 int sys_filesize( int fd ) {
-  struct file *fp = find_file_by_fd( fd );
+  struct file *fp = find_file_by_fd( fd, thread_current() );
   if( fp == NULL ) {
     return -1;
   } 
@@ -270,6 +292,7 @@ int sys_read( int fd, void *buffer, unsigned size ) {
 
   if( ! is_user_vaddr( buffer ) || ! is_user_vaddr( buffer + size ) ) {
     // buffer needs space for null('\0')
+    sys_exit( -1 );
     return -1;
   }
 
@@ -283,7 +306,7 @@ int sys_read( int fd, void *buffer, unsigned size ) {
     }
     ret = size;
   } else if( fd != STDOUT_FILENO ) {
-    fp = find_file_by_fd( fd );
+    fp = find_file_by_fd( fd, thread_current() );
     if( fp != NULL ) {
       ret = file_read( fp, buffer, size );
     }
@@ -307,9 +330,9 @@ int sys_write( int fd, const void *buffer, unsigned size ) {
   lock_acquire( &file_lock );
   if( fd == STDOUT_FILENO ) {
     putbuf( (const char *) buffer, size );
-    ret = size;
+    ret = -1;
   } else {
-    fp = find_file_by_fd( fd );
+    fp = find_file_by_fd( fd, thread_current() );
     if( fp != NULL ) {
       ret = file_write( fp, buffer, size );
     }
@@ -320,7 +343,7 @@ int sys_write( int fd, const void *buffer, unsigned size ) {
 }
 
 void sys_seek( int fd, unsigned position ) {
-  struct file *fp = find_file_by_fd( fd );
+  struct file *fp = find_file_by_fd( fd, thread_current() );
   if( fp == NULL ) {
     return;
   }
@@ -329,7 +352,7 @@ void sys_seek( int fd, unsigned position ) {
 }
 
 unsigned sys_tell( int fd ) {
-  struct file *fp = find_file_by_fd( fd );
+  struct file *fp = find_file_by_fd( fd, thread_current() );
   if( fp == NULL ) {
     return 0;
   }
@@ -338,7 +361,7 @@ unsigned sys_tell( int fd ) {
 }
 
 void sys_close( int fd ) {
-  struct file_node *fnode = find_file_node_by_fd( fd );
+  struct file_node *fnode = find_file_node_by_fd( fd, thread_current() );
   if( fnode == NULL ) {
     return;
   }

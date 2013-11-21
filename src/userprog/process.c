@@ -31,6 +31,8 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
+//  printf( "\n ----- PROCESS EXECUTE\n");
+//  printf( "\t%s\n", file_name );
   char *fn_copy;
   tid_t tid;
 
@@ -49,11 +51,19 @@ process_execute (const char *file_name)
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (filename, PRI_DEFAULT, start_process, fn_copy);
 
+  /* Wait process */
   struct thread *thread = get_thread_by_tid( tid );
   sema_down( &thread->wait );
 
+  while (thread->status == THREAD_BLOCKED)
+    thread_unblock (thread);
+  if( thread->ret_status == 0 ) {
+    process_wait( tid );
+  }
+
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
+  free( filename );
   return tid;
 }
 
@@ -109,7 +119,9 @@ start_process (void *file_name_)
     if_.esp -= 4; // argv[ argc ]
     *(int *)(if_.esp) = 0; // argv[ argc ] = 0;
 
+//    printf( "\n ---- ARGUMENT LIST \n");
     for( i = argc - 1; i >= 0; i -- ) {
+//      printf( "\t(%d) : %s\n", i, argv[ i ] );
       int now_len = strlen( argv[ i ] );
       start_esp -= now_len;
       start_esp --;
@@ -127,8 +139,14 @@ start_process (void *file_name_)
     // ARGUMENT PASSING END 
 
     sema_up( &thread->wait );
+    intr_disable();
+    thread_block();
+    intr_enable();
   } else {
     sema_up( &thread->wait );
+    intr_disable();
+    thread_block();
+    intr_enable();
   }
   palloc_free_page (argv);
 
@@ -139,7 +157,6 @@ start_process (void *file_name_)
     thread_exit ();
   }
 
-  file_allow_write( thread->fp );
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -167,12 +184,16 @@ process_wait (tid_t child_tid)
   if( thread == NULL || thread->status == THREAD_DYING ) {
     return -1;
   }
-  sema_down( &thread->wait );
-  int ret = thread->ret_status;
-  while( thread->status == THREAD_BLOCKED ) {
-    thread_unblock( thread );
+
+  int ret;
+  if (thread->ret_status == RET_STATUS_DEFAULT ) {
+    sema_down( &thread->wait );
+    while( thread->status == THREAD_BLOCKED ) {
+      thread_unblock( thread );
+    }
   }
   ret = thread->ret_status;
+  thread->ret_status = -1;
   return ret;
 }
 
@@ -182,11 +203,23 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+//  printf( " PROCESS EXIT -- %d\n", thread_current()->tid);
 
   while( !list_empty( &cur->wait.waiters ) ) {
     sema_up( &cur->wait );
   }
+  if( cur->fp != NULL ) {
+    file_allow_write( cur->fp );
+    file_close( cur->fp );
+    cur->fp = NULL;
+  }
   printf( "%s: exit(%d)\n", cur->name, cur->ret_status );
+//  printf( "SEMA ALL UP \n" );
+  if( cur->parent_thread != NULL ) {
+    intr_disable();
+    thread_block();
+    intr_enable();
+  }
 
   /* Destroys the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -527,7 +560,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE;
+        *esp = PHYS_BASE - 12;
       else
         palloc_free_page (kpage);
     }

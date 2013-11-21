@@ -99,7 +99,7 @@ thread_init (void)
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
   sema_init( &initial_thread->wait, 0 );
-  initial_thread->ret_status = 0;
+  initial_thread->ret_status = RET_STATUS_DEFAULT;
   initial_thread->fp = NULL;
 }
 
@@ -210,8 +210,9 @@ thread_create (const char *name, int priority,
   intr_set_level (old_level);
 
   sema_init( &t->wait, 0 );
-  t->ret_status = 0;
+  t->ret_status = RET_STATUS_DEFAULT;
   t->fp = NULL;
+  t->parent_thread = thread_current();
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -298,6 +299,22 @@ thread_exit (void)
   ASSERT (!intr_context ());
 
 #ifdef USERPROG
+  struct list_elem *e;
+  struct thread *t;
+
+  for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)) {
+    t = list_entry (e, struct thread, allelem);
+    if( t->parent_thread == thread_current() ) {
+      if( t->status == THREAD_BLOCKED ) {
+        thread_unblock (t);
+      } else {
+        t->parent_thread = NULL;
+        list_remove( &t->allelem );
+      }
+    }
+  }
+
+ 
   process_exit ();
 #endif
 

@@ -5,6 +5,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+#include "userprog/syscall.h"
+
 /* Number of page faults that are processed. */
 static long long page_fault_cnt;
 
@@ -71,6 +73,7 @@ exception_print_stats (void)
 static void
 kill (struct intr_frame *f) 
 {
+  thread_current()->ret_status = -1;
   /* This interrupt is one(probably) caused by a user process.
      For example, the process might have tried to access unmapped
      virtual memory (a page fault).  For now, we simply kill the
@@ -151,6 +154,7 @@ page_fault (struct intr_frame *f)
   /* To implement virtual memory delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
+  sys_exit( -1 );
   printf ("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",

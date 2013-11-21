@@ -17,8 +17,8 @@ struct file_node {
 // FILE DESCRIPTOR FUNCTION
 
 int make_fd( void );
-struct file_node *find_file_node_by_fd( int );
-struct file *find_file_by_fd( int );
+struct file_node *find_file_node_by_fd( int, struct thread * );
+struct file *find_file_by_fd( int, struct thread * );
 void close_file_by_thread( struct thread * );
 
 

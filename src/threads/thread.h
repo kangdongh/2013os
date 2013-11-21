@@ -15,6 +15,8 @@ enum thread_status
     THREAD_DYING        /* About to be destroyed. */
   };
 
+#define RET_STATUS_DEFAULT -1582281959
+
 /* Thread identifier type.
    You can redefine this to whatever type you like */
 typedef int tid_t;
@@ -86,7 +88,7 @@ struct thread
     /* Owned by thread.c. */
     tid_t tid;                          /* Thread identifier. */
     enum thread_status status;          /* Thread state. */
-    char name[32];                      /* Name (for debugging purposes). */
+    char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
@@ -97,6 +99,7 @@ struct thread
     int ret_status;
     struct semaphore wait;
     struct file *fp;
+    struct thread *parent_thread;
     
 
 #ifdef USERPROG
